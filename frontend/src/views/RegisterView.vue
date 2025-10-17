@@ -19,10 +19,12 @@
 
 <script lang="ts">
 import { defineComponent, ref } from "vue";
+import { useRouter } from "vue-router";
 import api from "@/api";
 
 export default defineComponent({
   setup() {
+    const router = useRouter();
     const email = ref("");   // ref - reactive values | variable is const, values are variable
     const password = ref("");
     const full_name = ref("");
@@ -51,6 +53,7 @@ export default defineComponent({
             full_name.value = "";
             institution.value = "";
             birthdate.value = "";
+            router.push("/menu");
         } catch (err: any) {  // post error
             messageColor.value = "red";
             message.value = err.response.data.message;

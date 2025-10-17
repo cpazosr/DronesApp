@@ -9,9 +9,14 @@ import psycopg2.extras
 
 app = Flask(__name__)
 
+app.secret_key = 'drones-dhyoa'
 app.config['SECRET_KEY'] = 'drones-dhyoa'   # for encrypting 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)    # session life span
-CORS(app)       # for cross-origin front and back
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,    # required for SAMESITE
+)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])  # for cross-origin front and back with session credentials
 
 
 @app.route('/ping')
@@ -19,6 +24,7 @@ def ping():
     return jsonify({'message' : 'pong'}),200
 
 
+'''
 @app.route('/')
 def home():
     # check if session is active with credentials
@@ -30,7 +36,8 @@ def home():
         resp = jsonify({'message' : 'Unauthorized access'})
         resp.status_code = 401
         return resp
-    
+'''
+
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -55,22 +62,29 @@ def register():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         query = "INSERT INTO pilots (email, psswd, full_name, institution, birthdate) \
                 VALUES (%s, %s, %s, %s, %s) \
-                ON CONFLICT (email) DO NOTHING"
+                ON CONFLICT (email) DO NOTHING \
+                RETURNING id"
         query_placer = (_email,_password,_full_name,_institution,_birthdate)
 
         cursor.execute(query, query_placer)
         conn.commit()
 
-        if cursor.rowcount == 0:
+        if cursor.rowcount == 0:    # empty query response
             cursor.close()
             conn.close()
             resp = jsonify({'message' : 'Email already exists'})
             resp.status_code = 400
             return resp
         else:
+            pilot_id = cursor.fetchone()[0]
             cursor.close()
             conn.close()
-            return jsonify({'message' : 'Register successful'})
+
+            session['pilot_id'] = pilot_id
+            session['email'] = _email
+
+            print(session)
+            return jsonify({'message' : 'Register successful'}), 200
     
     else:
         resp = jsonify({'message' : 'Missing profile credentials'})
@@ -96,7 +110,7 @@ def login():
 
         # check user exists
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        query = "SELECT email,psswd FROM pilots WHERE email=%s"
+        query = "SELECT id,email,psswd FROM pilots WHERE email=%s"
         query_placer = (_email,)
 
         cursor.execute(query, query_placer)
@@ -106,13 +120,15 @@ def login():
         
         # verify password
         if row:
+            pilot_id = row['id']
             email = row['email']
             password = row['psswd']
             
             if check_password_hash(password, _password):
                 session['email'] = email
-                cursor.close()
-                return jsonify({'message' : 'Logged in'})
+                session['pilot_id'] = pilot_id
+                print(session)
+                return jsonify({'message' : 'Logged in'}), 200
             else:
                 resp = jsonify({'message' : 'Incorrect password'})
                 resp.status_code = 400
@@ -128,12 +144,114 @@ def login():
         return resp
 
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout():
     # remove from session
-    if 'email' in session:
-        session.pop('email', None)
-    return jsonify({'message' : 'Logged out'})
+    session.clear()
+    return jsonify({'message' : 'Logged out'}), 200
+
+
+@app.route('/pilot', methods=['GET'])
+def get_current_pilot():
+    print(session)
+    if 'pilot_id' in session:
+        return jsonify({'id': session['pilot_id'], 'email': session['email']})
+    else:
+        print('pilot not in session')
+        return jsonify({'error': 'Not logged in'}), 401
+
+
+@app.route('/drones', methods=['GET'])
+def get_drones():
+    print(session)
+    if 'pilot_id' in session:
+
+        conn = connect_db()
+        if conn == False:
+            resp = jsonify({'message' : 'No connection to db'})
+            resp.status_code = 400
+            return resp
+        
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        query = "SELECT id,short_name,serial_number FROM drones WHERE user_id=%s"
+        query_placer = (session['pilot_id'],)
+
+        cursor.execute(query, query_placer)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        drones = [{"id": d[0], "short_name": d[1], "serial_number": d[2]} for d in rows]
+        return jsonify(drones), 200
+
+
+@app.route('/drone_models', methods=['GET'])
+def get_drone_models():
+    conn = connect_db()
+    if conn == False:
+        resp = jsonify({'message' : 'No connection to db'})
+        resp.status_code = 400
+        return resp
+    
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query = "SELECT id,manufacturer,model FROM drone_models \
+            WHERE sdk_version >= 5"
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    models = result = [{"id": m[0], "manufacturer": m[1], "model": m[2]} for m in rows]
+    return jsonify(models), 200
+
+
+@app.route('/new_drone', methods=['POST'])
+def add_new_drone():
+    # receive credentials
+    _json = request.json
+    _user_id = _json['user_id']
+    _drone_model_id = _json['drone_model_id']
+    _serial_number = _json['serial_number']
+    _short_name = _json['short_name']
+    _payload = _json['payload']
+    print(request.json)
+
+    if _user_id and _drone_model_id and _serial_number:
+        # connect to database
+        conn = connect_db()
+        if conn == False:
+            resp = jsonify({'message' : 'No connection to db'})
+            resp.status_code = 400
+            return resp
+
+        # insert credentials without duplicated emails
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        query = "INSERT INTO drones (user_id, drone_model_id, serial_number, short_name, payload) \
+                VALUES (%s, %s, %s, %s, %s) \
+                ON CONFLICT (serial_number) DO NOTHING \
+                RETURNING id"
+        query_placer = (_user_id,_drone_model_id,_serial_number,_short_name,_payload)
+
+        cursor.execute(query, query_placer)
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            resp = jsonify({'message' : 'Serial number already exists'})
+            resp.status_code = 400
+            return resp
+        else:
+            cursor.close()
+            conn.close()
+
+            return jsonify({'message' : 'Drone registeration successful'}), 200
+    
+    else:
+        resp = jsonify({'message' : 'Missing drone parameters'})
+        resp.status_code = 400
+        return resp
 
 
 if __name__ == '__main__':

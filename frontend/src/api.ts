@@ -4,6 +4,7 @@ import axios from 'axios';
 const api = axios.create({
     baseURL: "http://127.0.0.1:5000",  // running in localhost
     headers: {"Content-Type" : "application/json" },    // communication with json
+    withCredentials: true,  // session cookies enabled
 });
 
 export default api;

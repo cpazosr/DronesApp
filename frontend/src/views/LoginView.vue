@@ -16,10 +16,12 @@
 
 <script lang="ts">
 import { defineComponent, ref } from "vue";
+import { useRouter } from "vue-router";
 import api from "@/api";
 
 export default defineComponent({
   setup() {
+    const router = useRouter();
     const email = ref("");
     const password = ref("");
     const message = ref("");
@@ -28,7 +30,7 @@ export default defineComponent({
     async function onLogin() {
         console.log('logging in...');
         message.value = "";
-        
+
         try {
             const res = await api.post("/login", {
                 email: email.value,
@@ -38,6 +40,7 @@ export default defineComponent({
             message.value = res.data.message;
             // only clean password, keep same email
             password.value = "";
+            router.push('/menu');
         } catch (err: any) {
             messageColor.value = "red";
             message.value = err.response.data.message;
