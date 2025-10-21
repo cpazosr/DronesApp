@@ -8,9 +8,24 @@
     </router-link>
     <button @click="logout">Logout</button>
     <h3>Fly your drones</h3>
-    <ul>
-        <li v-for="d in drones" :key="d.id">{{d.short_name}} - {{d.serial_number}}</li>
-    </ul>
+    <table>
+        <thead>
+            <tr>
+                <th>Nickname</th>
+                <th>Serial Number</th>
+                <th>Fly</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="d in drones" :key="d.id">
+                <td>{{ d.short_name }}</td>
+                <td>{{ d.serial_number }}</td>
+                <td>
+                    <button @click="newFlight(d.id, d.short_name, d.serial_number)">Fly</button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
     <p v-if="message" :style="{ color: messageColor }">{{ message }}</p>
   </div>
 </template>
@@ -23,8 +38,8 @@ import api from "@/api";
 export default defineComponent({
     setup() {
         const router = useRouter();
-        const pilot = ref<{id: uuid; email: string} | null>(null);
-        const drones = ref<{id: uuid; short_name: string; serial_number: string}[]>([]);
+        const pilot = ref<{id: string; email: string} | null>(null);
+        const drones = ref<{id: string; short_name: string; serial_number: string}[]>([]);
 
         const message = ref("");
         const messageColor = ref("green");
@@ -32,7 +47,6 @@ export default defineComponent({
         async function getPilot() {
             try {
                 const res = await api.get("/pilot");
-                console.log(res);
                 pilot.value = res.data;
             } catch {
                 router.push('/login');
@@ -56,9 +70,15 @@ export default defineComponent({
 
         onMounted(async() => {
             await getPilot();
+            await getDrones();
         });
 
-        return {pilot, message, messageColor, logout};
+        function newFlight(droneId: string, nickname: string, serial_number: string){
+            router.push({name: 'flights', 
+            params: {drone_id: droneId, drone_name: nickname, serial: serial_number}});
+        }
+
+        return {pilot, drones, message, messageColor, logout, newFlight};
     },
 });
 </script>
@@ -70,5 +90,13 @@ input {
 button {
   padding: 8px;
   cursor: pointer;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 6px;
+    text-align: left;
 }
 </style>

@@ -33,8 +33,8 @@ export default defineComponent({
     const serial_number = ref("");
     const short_name = ref("");
     const payload = ref("");
-    const pilot = ref<{id: uuid; email: string} | null>(null);
-    const droneModels = ref<{id: int; manufacturer: string; model: string}[]>([]);
+    const pilot = ref<{id: string; email: string} | null>(null);
+    const droneModels = ref<{id: number; manufacturer: string; model: string}[]>([]);
     // feedback mssgs
     const message = ref("");
     const messageColor = ref("green");
@@ -42,7 +42,6 @@ export default defineComponent({
     async function getPilot() {
         try {
             const res = await api.get("/pilot");
-            console.log(res);
             pilot.value = res.data;
         } catch {
             router.push('/login');
@@ -52,7 +51,6 @@ export default defineComponent({
     async function getDroneModels() {
         try {
             const res = await api.get("/drone_models");
-            console.log(res);
             droneModels.value = res.data;
         } catch {
             messageColor.value = "red";
@@ -65,7 +63,7 @@ export default defineComponent({
         message.value = "";
         try {
             const res = await api.post("/new_drone", {
-                user_id: pilot.id,
+                user_id: pilot.value?.id,
                 drone_model_id: model_id.value,
                 serial_number: serial_number.value,
                 short_name: short_name.value,

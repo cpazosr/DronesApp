@@ -254,5 +254,103 @@ def add_new_drone():
         return resp
 
 
+@app.route('/flights', methods=['GET'])
+def get_flights():
+    
+    drone_id = request.args.get('drone_id')
+    if 'pilot_id' in session and drone_id:
+
+        conn = connect_db()
+        if conn == False:
+            resp = jsonify({'message' : 'No connection to db'})
+            resp.status_code = 400
+            return resp
+        
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        query = "SELECT id,type,flight_date,state,description FROM flights WHERE pilot_id=%s AND drone_id=%s"
+        query_placer = (session['pilot_id'],drone_id,)
+
+        cursor.execute(query, query_placer)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        drones = [{"id": f[0], "type": f[1], "date": f[2], "state": f[3], "description": f[4]} for f in rows]
+        return jsonify(drones), 200
+
+
+@app.route('/new_flight', methods=['POST'])
+def add_new_flight():
+    # receive credentials
+    _json = request.json
+    _drone_id = _json['drone_id']
+    _pilot_id = _json['pilot_id']
+    _state = _json['state']
+    _type = _json['type']
+    print(request.json)
+
+    if _drone_id and _pilot_id and _state and _type:
+        # connect to database
+        conn = connect_db()
+        if conn == False:
+            resp = jsonify({'message' : 'No connection to db'})
+            resp.status_code = 400
+            return resp
+
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        query = "INSERT INTO flights (drone_id, pilot_id, state, type) \
+                VALUES (%s, %s, %s, %s)"
+        query_placer = (_drone_id,_pilot_id,_state,_type)
+
+        cursor.execute(query, query_placer)
+        conn.commit()
+    
+        cursor.close()
+        conn.close()
+
+        return jsonify({'message' : 'Flight registeration successful'}), 200
+    
+    else:
+        resp = jsonify({'message' : 'Missing flight parameters'})
+        resp.status_code = 400
+        return resp
+
+
+@app.route('/update_flight', methods=['POST'])
+def update_flight():
+    # receive credentials
+    _json = request.json
+    _flight_id = _json['flight_id']
+    _description = _json['description']
+    print(request.json)
+
+    if _flight_id:
+        # connect to database
+        conn = connect_db()
+        if conn == False:
+            resp = jsonify({'message' : 'No connection to db'})
+            resp.status_code = 400
+            return resp
+
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        query = "UPDATE flights SET \
+                description = %s, state = 'finished', flight_date = CURRENT_TIMESTAMP \
+                WHERE id = %s"
+        query_placer = (_description, _flight_id)
+
+        cursor.execute(query, query_placer)
+        conn.commit()
+    
+        cursor.close()
+        conn.close()
+
+        return jsonify({'message' : 'Flight update successful'}), 200
+    
+    else:
+        resp = jsonify({'message' : 'Missing flight parameters'})
+        resp.status_code = 400
+        return resp
+
+
 if __name__ == '__main__':
     app.run()
